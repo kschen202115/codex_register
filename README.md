@@ -1,6 +1,6 @@
 # codex-register-py
 
-基于 Python 的 HTTP 自动化脚本，按当前代码实现通过接口流程执行账号注册/登录相关步骤，并通过 MailAPI 轮询邮箱验证码。
+基于 Python 的 HTTP 自动化脚本，通过接口执行账号注册/登录相关步骤，并通过 MailAPI 轮询邮箱验证码。
 项目参考：https://github.com/Ethan-W20/openai-auto-register
 
 ## 免责声明
@@ -40,7 +40,7 @@ pip install -r requirements.txt
 
 ## 配置说明
 
-在 `codex_register.py` 中配置以下常量（当前已脱敏为占位值）：
+在 `codex_register.py` 中配置以下常量：
 
 ```python
 EMAIL_DOMAINS = ["example1.com", "example2.com", "example3.com", "example4.com"]
