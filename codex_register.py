@@ -443,7 +443,7 @@ def generate_password():
     letters = string.ascii_letters  # 包含所有大小写字母 (a-z, A-Z)
     digits = string.digits          # 包含所有数字 (0-9)
     # 常用的安全符号，排除了容易引起代码解析错误的引号等
-    symbols = "!@#$%^&*()_+-=[]{}|;:,.<>?" 
+    symbols = "!@#()_+-=[]{}" 
 
     # 2. 按照要求随机抽取字符
     # 抽取 5 个字母
@@ -893,5 +893,6 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
