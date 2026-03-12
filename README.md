@@ -114,6 +114,4 @@ python api_register.py --count 20 --workers 5
 - 检查 `CPA_URL` 与 `MANAGEMENT_KEY`。
 - 检查上传接口路径是否与服务端一致。
 
-## 开发建议
-
 
