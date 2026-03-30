@@ -60,19 +60,19 @@ PROXY_CACHE_FILE = os.path.join(SCRIPT_DIR, "proxy_cache.json")
 
 
 # 邮箱后缀
-EMAIL_DOMAINS = ["example1.com", "example2.com", "example3.com", "example4.com"]
+EMAIL_DOMAINS = ["exp.com"]
+
 # Token 上传服务器
-CPA_URL = ""#http://your-server:port
-MANAGEMENT_KEY = "your-management-key"
+CPA_URL = ""
+MANAGEMENT_KEY = ""
 # MailAPI 配置（固定）
-MAIL_API_URL = "https://mail.example.com"
-MAIL_API_AUTH = "your-mailapi-auth"
+MAIL_API_URL = ""
+MAIL_API_AUTH = ""
 MAIL_PASSWD = ""  # 可选，cloudflare_temp_email私有站点密码
 # 超时与重试
 MAIL_POLL_TIMEOUT = 180
 OTP_RESEND_INTERVAL = 25
-MAX_RETRY_PER_ACCOUNT = 5
-
+MAX_RETRY_PER_ACCOUNT = 1
 
 
 
@@ -541,7 +541,7 @@ def register_account(
         sentinel_token = sentinel_resp.json()["token"]
         sentinel_header = json.dumps({
             "p": "", "t": "", "c": sentinel_token,
-            "id": device_id, "flow": "username_password_create",
+            "id": device_id, "flow": "authorize_continue",
         })
         log.info(f"      Sentinel token OK")
 
@@ -557,6 +557,7 @@ def register_account(
             {"username": {"value": email_addr, "kind": "email"}, "screen_hint": "signup"},
             headers={
                 "Referer": "https://auth.openai.com/create-account",
+                "openai-sentinel-token": sentinel_header,
             },
         )
         if not signup_resp.ok():
@@ -577,36 +578,7 @@ def register_account(
         name = ""
         # 已注册账号：步骤3返回 email_otp_verification → OTP 已自动发送
         is_existing_account = (page_type == "email_otp_verification")
-        ua = http._session.headers.get("User-Agent", "Mozilla/5.0")
-        try:
-            pow_token = build_sentinel_pow_token(ua)
-        except SentinelPOWError as e:
-            raise RuntimeError(f"Sentinel PoW 求解失败: {e}")
-        log.info(f"      PoW token 已生成")
 
-        sentinel_body = json.dumps({
-            "p": pow_token,
-            "id": device_id,
-            "flow": "authorize_continue",
-        }, separators=(",", ":"))
-        sentinel_resp = http._session.post(
-            OAI_SENTINEL_URL,
-            data=sentinel_body,
-            headers={
-                "Origin": "https://sentinel.openai.com",
-                "Referer": "https://sentinel.openai.com/backend-api/sentinel/frame.html?sv=20260219f9f6",
-                "Content-Type": "text/plain;charset=UTF-8",
-            },
-            timeout=30,
-        )
-        if sentinel_resp.status_code < 200 or sentinel_resp.status_code >= 300:
-            raise RuntimeError(f"Sentinel 失败: {sentinel_resp.status_code} {sentinel_resp.text[:200]}")
-        sentinel_token = sentinel_resp.json()["token"]
-        sentinel_header = json.dumps({
-            "p": "", "t": "", "c": sentinel_token,
-            "id": device_id, "flow": "username_password_create",
-        })
-        log.info(f"      Sentinel token OK")
         _check_cancel()
         if is_existing_account:
             # 已注册账号：OTP 在步骤3提交邮箱时已自动发送
@@ -616,7 +588,7 @@ def register_account(
             log.info(f"   设置密码...")
             otp_resp = http.post_json(
                 OAI_REGISTER_URL, {"password": password,"username":email_addr},
-                headers={"Referer": "https://auth.openai.com/create-account/password","openai-sentinel-token": sentinel_header,},
+                headers={"Referer": "https://auth.openai.com/create-account/password"},
             )
             if not otp_resp.ok():
                 raise RuntimeError(f"设置密码失败: {otp_resp.status} {otp_resp.text[:300]}")
@@ -661,36 +633,7 @@ def register_account(
         log.info(f"      OK")
 
         _sleep(0.5, 1.5)
-        ua = http._session.headers.get("User-Agent", "Mozilla/5.0")
-        try:
-            pow_token = build_sentinel_pow_token(ua)
-        except SentinelPOWError as e:
-            raise RuntimeError(f"Sentinel PoW 求解失败: {e}")
-        log.info(f"      PoW token 已生成")
 
-        sentinel_body = json.dumps({
-            "p": pow_token,
-            "id": device_id,
-            "flow": "authorize_continue",
-        }, separators=(",", ":"))
-        sentinel_resp = http._session.post(
-            OAI_SENTINEL_URL,
-            data=sentinel_body,
-            headers={
-                "Origin": "https://sentinel.openai.com",
-                "Referer": "https://sentinel.openai.com/backend-api/sentinel/frame.html?sv=20260219f9f6",
-                "Content-Type": "text/plain;charset=UTF-8",
-            },
-            timeout=30,
-        )
-        if sentinel_resp.status_code < 200 or sentinel_resp.status_code >= 300:
-            raise RuntimeError(f"Sentinel 失败: {sentinel_resp.status_code} {sentinel_resp.text[:200]}")
-        sentinel_token = sentinel_resp.json()["token"]
-        sentinel_header = json.dumps({
-            "p": "", "t": "", "c": sentinel_token,
-            "id": device_id, "flow": "oauth_create_account",
-        })
-        log.info(f"      Sentinel token OK")
         # --- 7. 创建账号（仅新注册时，已注册账号跳过）---
         _check_cancel()
         if is_existing_account or is_login:
@@ -702,7 +645,7 @@ def register_account(
             create_resp = http.post_json(
                 OAI_CREATE_URL,
                 {"name": name, "birthdate": birthday},
-                headers={"Referer": "https://auth.openai.com/about-you","openai-sentinel-token": sentinel_header,},
+                headers={"Referer": "https://auth.openai.com/about-you"},
             )
             if not create_resp.ok():
                 raise RuntimeError(f"创建账号失败: {create_resp.status} {create_resp.text[:300]}")
@@ -721,18 +664,18 @@ def register_account(
     # 新注册账号：重新发起登录流程拿 token
     # 注册完成后的会话状态不完整，需要重新走一遍完整登录才能拿到干净的 token set
     # ═══════════════════════════════════════════════════════
-        log.info(f"  [7.5] 注册完成，重新发起登录流程拿 token...")
-        _sleep(1.0, 2.0)
+    log.info(f"  [7.5] 注册完成，重新发起登录流程拿 token...")
+    _sleep(1.0, 2.0)
 
-    # with APISession(proxy) as http:
+    with APISession(proxy) as http2:
         # --- 7.5a. 重新 OAuth ---
         _check_cancel()
         oauth = create_oauth_params()
         log.info(f"  [7.5a] 重新发起 OAuth (登录)...")
-        resp2 = http.get(oauth["auth_url"])
+        resp2 = http2.get(oauth["auth_url"])
         log.info(f"         状态: {resp2.status}")
 
-        device_id2 = http.get_cookie("oai-did") or ""
+        device_id2 = http2.get_cookie("oai-did") or ""
         if device_id2:
             log.info(f"         设备ID: {device_id2[:16]}...")
 
@@ -741,7 +684,7 @@ def register_account(
         # --- 7.5b. 重新 Sentinel PoW ---
         _check_cancel()
         log.info(f"  [7.5b] 重新求解 Sentinel PoW...")
-        ua2 = http._session.headers.get("User-Agent", "Mozilla/5.0")
+        ua2 = http2._session.headers.get("User-Agent", "Mozilla/5.0")
         try:
             pow_token2 = build_sentinel_pow_token(ua2)
         except SentinelPOWError as e:
@@ -752,7 +695,7 @@ def register_account(
             "id": device_id2,
             "flow": "authorize_continue",
         }, separators=(",", ":"))
-        sentinel_resp2 = http._session.post(
+        sentinel_resp2 = http2._session.post(
             OAI_SENTINEL_URL,
             data=sentinel_body2,
             headers={
@@ -776,7 +719,7 @@ def register_account(
         # --- 7.5c. 提交邮箱（登录模式）---
         _check_cancel()
         log.info(f"  [7.5c] 提交邮箱 (登录): {email_addr}")
-        login_resp = http.post_json(
+        login_resp = http2.post_json(
             OAI_SIGNUP_URL,
             {"username": {"value": email_addr, "kind": "email"}, "screen_hint": "login"},
             headers={
@@ -803,7 +746,7 @@ def register_account(
         OAI_PASSWORD_VERIFY_URL = "https://auth.openai.com/api/accounts/password/verify"
         _check_cancel()
         log.info(f"  [7.5d] 提交登录密码...")
-        pwd_resp = http.post_json(
+        pwd_resp = http2.post_json(
             OAI_PASSWORD_VERIFY_URL,
             {"password": password},
             headers={"Referer": "https://auth.openai.com/log-in/password"},
@@ -828,7 +771,7 @@ def register_account(
 
         # --- 7.5e. 获取并验证登录 OTP ---
         def _resend2():
-            r = http.post_json(OAI_RESEND_OTP_URL, {},
+            r = http2.post_json(OAI_RESEND_OTP_URL, {},
                 headers={"Referer": "https://auth.openai.com/email-verification"})
             return r.ok()
 
@@ -842,7 +785,7 @@ def register_account(
 
         _check_cancel()
         log.info(f"  [7.5f] 验证登录 OTP: {code2}")
-        verify_resp2 = http.post_json(
+        verify_resp2 = http2.post_json(
             OAI_VERIFY_OTP_URL, {"code": code2},
             headers={"Referer": "https://auth.openai.com/email-verification"},
         )
@@ -853,7 +796,7 @@ def register_account(
         _sleep(0.5, 1.5)
 
         # 使用新会话完成 token 兑换
-        return _complete_token_exchange(http, oauth, email_addr, name, "注册+登录",
+        return _complete_token_exchange(http2, oauth, email_addr, name, "注册+登录",
                                         "login", _check_cancel, _sleep)
 
 
@@ -1126,6 +1069,5 @@ def main():
 
 if __name__ == "__main__":
     main()
-
 
 
